@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -9,7 +9,6 @@ const CATEGORIES = ['Electronics', 'Furniture', 'Clothing', 'Books', 'Sports', '
 export default function CreateListing() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [storageStatus, setStorageStatus] = useState<string>('')
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -36,89 +35,27 @@ export default function CreateListing() {
     }))
   }
 
-  // Test database and storage on component mount
-  useEffect(() => {
-    const testConnection = async () => {
-      if (!supabase) {
-        setStorageStatus('❌ Supabase client not initialized')
-        return
-      }
-
-      try {
-        console.log('🔍 Testing database connection...')
-        
-        // Test database connection first
-        const { data: dbData, error: dbError } = await supabase
-          .from('listings')
-          .select('id')
-          .limit(1)
-
-        if (dbError) {
-          console.error('❌ Database test error:', dbError)
-          setStorageStatus(`❌ Database error: ${dbError.message}`)
-          return
-        }
-
-        console.log('✅ Database connection successful:', dbData)
-        
-        // Test storage bucket
-        console.log('🔍 Testing storage bucket...')
-        const { data: storageData, error: storageError } = await supabase.storage
-          .from('listing-images')
-          .list('', { limit: 1 })
-
-        if (storageError) {
-          console.error('⚠️ Storage test error:', storageError)
-          setStorageStatus(`✅ Database OK, ⚠️ Storage: ${storageError.message}`)
-        } else {
-          console.log('✅ Storage test successful:', storageData)
-          setStorageStatus('✅ Database & Storage both accessible')
-        }
-      } catch (err) {
-        console.error('❌ Connection test failed:', err)
-        setStorageStatus(`❌ Connection test failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
-      }
-    }
-
-    testConnection()
-  }, [])
 
   const uploadImage = async (file: File): Promise<string> => {
     if (!supabase) {
       throw new Error('Supabase client not initialized. Please check your environment variables.')
     }
 
-    try {
-      console.log('Starting image upload...')
-      console.log('File:', file.name, 'Size:', file.size, 'Type:', file.type)
-      
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${Date.now()}.${fileExt}`
-      const filePath = `listings/${fileName}`
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${Date.now()}.${fileExt}`
+    const filePath = `listings/${fileName}`
 
-      console.log('Uploading to path:', filePath)
+    const { error: uploadError } = await supabase.storage
+      .from('listing-images')
+      .upload(filePath, file)
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('listing-images')
-        .upload(filePath, file)
+    if (uploadError) throw uploadError
 
-      console.log('Upload result:', { uploadData, uploadError })
+    const { data } = supabase.storage
+      .from('listing-images')
+      .getPublicUrl(filePath)
 
-      if (uploadError) {
-        console.error('Storage upload error details:', uploadError)
-        throw new Error(`Failed to upload image: ${uploadError.message} (Code: ${uploadError.statusCode})`)
-      }
-
-      const { data: urlData } = supabase.storage
-        .from('listing-images')
-        .getPublicUrl(filePath)
-
-      console.log('Public URL:', urlData.publicUrl)
-      return urlData.publicUrl
-    } catch (error) {
-      console.error('Image upload failed with error:', error)
-      throw new Error(`Image upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
+    return data.publicUrl
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -126,56 +63,23 @@ export default function CreateListing() {
     setLoading(true)
 
     try {
-      console.log('=== STARTING LISTING CREATION ===')
-      console.log('Form data:', formData)
-      
       if (!supabase) {
-        console.error('❌ Supabase client is null/undefined')
         throw new Error('Supabase client not initialized. Please check your environment variables.')
       }
-
-      console.log('✅ Supabase client is available')
 
       let imageUrl = ''
 
       // Try to upload image, but don't fail the entire listing if it fails
       if (formData.image) {
-        console.log('📸 Processing image...')
         try {
           imageUrl = await uploadImage(formData.image)
-          console.log('✅ Image uploaded successfully:', imageUrl)
         } catch (imageError) {
-          console.warn('⚠️ Image upload failed, trying base64 fallback:', imageError)
-          // Fallback to base64 encoding if storage fails
-          try {
-            const reader = new FileReader()
-            imageUrl = await new Promise((resolve, reject) => {
-              reader.onload = () => resolve(reader.result as string)
-              reader.onerror = reject
-              reader.readAsDataURL(formData.image!)
-            })
-            console.log('✅ Using base64 image as fallback')
-          } catch (base64Error) {
-            console.warn('⚠️ Base64 conversion also failed, continuing without image:', base64Error)
-            // Continue without image - the listing will still be created
-          }
+          console.warn('Image upload failed, continuing without image:', imageError)
+          // Continue without image - the listing will still be created
         }
-      } else {
-        console.log('📸 No image provided')
       }
 
-      console.log('💾 Attempting to insert listing into database...')
-      console.log('Insert data:', {
-        title: formData.title,
-        description: formData.description,
-        price: parseFloat(formData.price),
-        seller_email: formData.seller_email,
-        category: formData.category,
-        location: formData.location,
-        image_url: imageUrl
-      })
-
-      const { data: insertData, error } = await supabase
+      const { error } = await supabase
         .from('listings')
         .insert({
           title: formData.title,
@@ -186,22 +90,13 @@ export default function CreateListing() {
           location: formData.location,
           image_url: imageUrl
         })
-        .select()
 
-      console.log('Database insert result:', { insertData, error })
+      if (error) throw error
 
-      if (error) {
-        console.error('❌ Database insert error:', error)
-        throw new Error(`Database error: ${error.message} (Code: ${error.code})`)
-      }
-
-      console.log('✅ Listing created successfully:', insertData)
-      alert('✅ Listing created successfully!')
       router.push('/')
     } catch (error) {
-      console.error('❌ Error creating listing:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      alert(`❌ Failed to create listing: ${errorMessage}`)
+      console.error('Error creating listing:', error)
+      alert('Failed to create listing. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -215,41 +110,6 @@ export default function CreateListing() {
             🛍️ Create Your Listing
           </h1>
           <p className="text-gray-600">Sell your items to the community</p>
-          {storageStatus && (
-            <div className="mt-4 p-3 rounded-lg bg-gray-100 text-sm">
-              {storageStatus}
-            </div>
-          )}
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={async () => {
-                console.log('🧪 Testing database connection...')
-                if (!supabase) {
-                  alert('❌ Supabase client not initialized')
-                  return
-                }
-                
-                try {
-                  const { data, error } = await supabase
-                    .from('listings')
-                    .select('*')
-                    .limit(1)
-                  
-                  if (error) {
-                    alert(`❌ Database test failed: ${error.message}`)
-                  } else {
-                    alert(`✅ Database test successful! Found ${data?.length || 0} listings.`)
-                  }
-                } catch (err) {
-                  alert(`❌ Test failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
-                }
-              }}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
-            >
-              🧪 Test Database Connection
-            </button>
-          </div>
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-6">
