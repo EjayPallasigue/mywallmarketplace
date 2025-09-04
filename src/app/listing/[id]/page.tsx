@@ -26,6 +26,12 @@ export default function ListingDetail() {
 
   const fetchListing = async (id: string) => {
     try {
+      if (!supabase) {
+        console.error('Supabase client not initialized. Please check your environment variables.')
+        router.push('/')
+        return
+      }
+
       const { data, error } = await supabase
         .from('listings')
         .select('*')
@@ -47,6 +53,10 @@ export default function ListingDetail() {
     setSendingMessage(true)
 
     try {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized. Please check your environment variables.')
+      }
+
       const { error } = await supabase
         .from('messages')
         .insert({

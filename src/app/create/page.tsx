@@ -36,6 +36,10 @@ export default function CreateListing() {
   }
 
   const uploadImage = async (file: File): Promise<string> => {
+    if (!supabase) {
+      throw new Error('Supabase client not initialized. Please check your environment variables.')
+    }
+
     const fileExt = file.name.split('.').pop()
     const fileName = `${Date.now()}.${fileExt}`
     const filePath = `listings/${fileName}`
@@ -58,6 +62,10 @@ export default function CreateListing() {
     setLoading(true)
 
     try {
+      if (!supabase) {
+        throw new Error('Supabase client not initialized. Please check your environment variables.')
+      }
+
       let imageUrl = ''
 
       if (formData.image) {

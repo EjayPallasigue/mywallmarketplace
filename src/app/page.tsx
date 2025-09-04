@@ -24,6 +24,12 @@ export default function Home() {
 
   const fetchListings = async () => {
     try {
+      if (!supabase) {
+        console.error('Supabase client not initialized. Please check your environment variables.')
+        setListings([])
+        return
+      }
+
       const { data, error } = await supabase
         .from('listings')
         .select('*')

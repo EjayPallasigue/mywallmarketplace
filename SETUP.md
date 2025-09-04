@@ -32,6 +32,20 @@ npm run dev
 
 The application will be available at [http://localhost:3000](http://localhost:3000)
 
+## Vercel Deployment
+
+To deploy to Vercel:
+
+1. Push your code to GitHub
+2. Connect your repository to Vercel
+3. In Vercel dashboard, go to **Settings** → **Environment Variables**
+4. Add the following environment variables:
+   - `NEXT_PUBLIC_SUPABASE_URL` = your_supabase_project_url_here
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = your_supabase_anon_key_here
+5. Redeploy your application
+
+**Important**: Make sure to add these environment variables in Vercel before deploying, otherwise the build will fail.
+
 ## Next Steps
 
 1. Create your first listing by clicking "Create New Listing"
