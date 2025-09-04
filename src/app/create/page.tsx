@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -9,6 +9,7 @@ const CATEGORIES = ['Electronics', 'Furniture', 'Clothing', 'Books', 'Sports', '
 export default function CreateListing() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [storageStatus, setStorageStatus] = useState<string>('')
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -35,34 +36,71 @@ export default function CreateListing() {
     }))
   }
 
+  // Test storage bucket on component mount
+  useEffect(() => {
+    const testStorage = async () => {
+      if (!supabase) {
+        setStorageStatus('❌ Supabase client not initialized')
+        return
+      }
+
+      try {
+        console.log('Testing storage bucket...')
+        const { data, error } = await supabase.storage
+          .from('listing-images')
+          .list('', { limit: 1 })
+
+        if (error) {
+          console.error('Storage test error:', error)
+          setStorageStatus(`❌ Storage error: ${error.message}`)
+        } else {
+          console.log('Storage test successful:', data)
+          setStorageStatus('✅ Storage bucket is accessible')
+        }
+      } catch (err) {
+        console.error('Storage test failed:', err)
+        setStorageStatus(`❌ Storage test failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      }
+    }
+
+    testStorage()
+  }, [])
+
   const uploadImage = async (file: File): Promise<string> => {
     if (!supabase) {
       throw new Error('Supabase client not initialized. Please check your environment variables.')
     }
 
     try {
+      console.log('Starting image upload...')
+      console.log('File:', file.name, 'Size:', file.size, 'Type:', file.type)
+      
       const fileExt = file.name.split('.').pop()
       const fileName = `${Date.now()}.${fileExt}`
       const filePath = `listings/${fileName}`
 
-      const { error: uploadError } = await supabase.storage
+      console.log('Uploading to path:', filePath)
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('listing-images')
         .upload(filePath, file)
 
+      console.log('Upload result:', { uploadData, uploadError })
+
       if (uploadError) {
-        console.error('Storage upload error:', uploadError)
-        throw new Error(`Failed to upload image: ${uploadError.message}`)
+        console.error('Storage upload error details:', uploadError)
+        throw new Error(`Failed to upload image: ${uploadError.message} (Code: ${uploadError.statusCode})`)
       }
 
-      const { data } = supabase.storage
+      const { data: urlData } = supabase.storage
         .from('listing-images')
         .getPublicUrl(filePath)
 
-      return data.publicUrl
+      console.log('Public URL:', urlData.publicUrl)
+      return urlData.publicUrl
     } catch (error) {
-      console.error('Image upload failed:', error)
-      // If storage fails, we'll continue without an image
-      throw new Error('Image upload failed. Please try again or create the listing without an image.')
+      console.error('Image upload failed with error:', error)
+      throw new Error(`Image upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -82,8 +120,20 @@ export default function CreateListing() {
         try {
           imageUrl = await uploadImage(formData.image)
         } catch (imageError) {
-          console.warn('Image upload failed, continuing without image:', imageError)
-          // Continue without image - the listing will still be created
+          console.warn('Image upload failed, trying base64 fallback:', imageError)
+          // Fallback to base64 encoding if storage fails
+          try {
+            const reader = new FileReader()
+            imageUrl = await new Promise((resolve, reject) => {
+              reader.onload = () => resolve(reader.result as string)
+              reader.onerror = reject
+              reader.readAsDataURL(formData.image!)
+            })
+            console.log('Using base64 image as fallback')
+          } catch (base64Error) {
+            console.warn('Base64 conversion also failed, continuing without image:', base64Error)
+            // Continue without image - the listing will still be created
+          }
         }
       }
 
@@ -118,6 +168,11 @@ export default function CreateListing() {
             🛍️ Create Your Listing
           </h1>
           <p className="text-gray-600">Sell your items to the community</p>
+          {storageStatus && (
+            <div className="mt-4 p-3 rounded-lg bg-gray-100 text-sm">
+              {storageStatus}
+            </div>
+          )}
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-6">
