@@ -40,21 +40,30 @@ export default function CreateListing() {
       throw new Error('Supabase client not initialized. Please check your environment variables.')
     }
 
-    const fileExt = file.name.split('.').pop()
-    const fileName = `${Date.now()}.${fileExt}`
-    const filePath = `listings/${fileName}`
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Date.now()}.${fileExt}`
+      const filePath = `listings/${fileName}`
 
-    const { error: uploadError } = await supabase.storage
-      .from('listing-images')
-      .upload(filePath, file)
+      const { error: uploadError } = await supabase.storage
+        .from('listing-images')
+        .upload(filePath, file)
 
-    if (uploadError) throw uploadError
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError)
+        throw new Error(`Failed to upload image: ${uploadError.message}`)
+      }
 
-    const { data } = supabase.storage
-      .from('listing-images')
-      .getPublicUrl(filePath)
+      const { data } = supabase.storage
+        .from('listing-images')
+        .getPublicUrl(filePath)
 
-    return data.publicUrl
+      return data.publicUrl
+    } catch (error) {
+      console.error('Image upload failed:', error)
+      // If storage fails, we'll continue without an image
+      throw new Error('Image upload failed. Please try again or create the listing without an image.')
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,8 +77,14 @@ export default function CreateListing() {
 
       let imageUrl = ''
 
+      // Try to upload image, but don't fail the entire listing if it fails
       if (formData.image) {
-        imageUrl = await uploadImage(formData.image)
+        try {
+          imageUrl = await uploadImage(formData.image)
+        } catch (imageError) {
+          console.warn('Image upload failed, continuing without image:', imageError)
+          // Continue without image - the listing will still be created
+        }
       }
 
       const { error } = await supabase
